@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Grant Assistant — BioStore Technologies</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #fafaf8; --bg2: #f2f1ee; --bg3: #e8e6e1;
+  --text: #1a1917; --text2: #6b6a65; --text3: #a09e99;
+  --border: rgba(0,0,0,0.09); --border2: rgba(0,0,0,0.16);
+  --purple: #4f35b3; --purple-light: #eeecfd; --purple-muted: #3b2889;
+  --green: #0d6b52; --green-light: #dff4ec; --green-muted: #085040;
+  --amber: #b87315; --amber-light: #fef3dc;
+  --red: #c13030; --red-light: #fdeaea;
+  --blue: #1a5fa8; --blue-light: #e8f1fb;
+  --radius: 8px; --radius-lg: 12px; --radius-xl: 16px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #181816; --bg2: #222220; --bg3: #2c2c29;
+    --text: #e8e7e1; --text2: #9e9c97; --text3: #6a6865;
+    --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.15);
+    --purple-light: #221d4a; --purple-muted: #b0a6f0;
+    --green-light: #0a2e24; --green-muted: #7fd4b8;
+    --amber-light: #2a1e06; --red-light: #2a0f0f; --blue-light: #0e1f38;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3); --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+  }
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; height: 100vh; overflow: hidden; }
+#root { height: 100vh; }
+* { scrollbar-width: thin; scrollbar-color: var(--bg3) transparent; }
+::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 99px; }
+input, select, textarea, button { font-family: inherit; }
+button { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const API = '';
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ─── Design tokens as inline styles ────────────────────────────────────────
+const S = {
+  // Layout
+  app: { display: 'flex', height: '100vh', overflow: 'hidden' },
+  sidebar: { width: 250, minWidth: 250, background: 'var(--bg2)', borderRight: '0.5px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  // Sidebar
+  sidebarHeader: { padding: '18px 18px 14px', borderBottom: '0.5px solid var(--border)' },
+  sidebarCo: { fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 },
+  sidebarTitle: { fontSize: 16, fontWeight: 700, color: 'var(--text)' },
+  sectionLabel: { padding: '12px 18px 4px', fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' },
+  navItem: (active) => ({ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 18px', fontSize: 13, color: active ? 'var(--text)' : 'var(--text2)', background: active ? 'var(--bg)' : 'transparent', borderLeft: `2px solid ${active ? 'var(--purple)' : 'transparent'}`, fontWeight: active ? 500 : 400, cursor: 'pointer', transition: 'all 0.1s', userSelect: 'none' }),
+  dot: (color) => ({ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: color }),
+  addBtn: { margin: '8px 14px', padding: '7px 11px', fontSize: 12, background: 'transparent', border: '0.5px dashed var(--border2)', borderRadius: 'var(--radius)', color: 'var(--text3)', textAlign: 'left', display: 'block', width: 'calc(100% - 28px)', transition: 'all 0.1s' },
+  sidebarScroll: { flex: 1, overflowY: 'auto' },
+  // Panels
+  panel: { flex: 1, overflowY: 'auto', padding: '26px 30px' },
+  panelTitle: { fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 3 },
+  panelSub: { fontSize: 13, color: 'var(--text2)', marginBottom: 22 },
+  // Cards
+  card: (hover) => ({ background: 'var(--bg)', border: '0.5px solid ' + (hover ? 'var(--border2)' : 'var(--border)'), borderRadius: 'var(--radius-lg)', padding: '14px 16px', marginBottom: 10, transition: 'border-color 0.1s' }),
+  // Badges
+  badge: (type) => {
+    const map = { fixed: ['var(--purple-light)', 'var(--purple)'], adaptive: ['var(--green-light)', 'var(--green)'], draft: ['var(--bg3)', 'var(--text3)'], in_progress: ['var(--amber-light)', 'var(--amber)'], submitted: ['var(--blue-light)', 'var(--blue)'], awarded: ['var(--green-light)', 'var(--green)'], rejected: ['var(--red-light)', 'var(--red)'] };
+    const [bg, col] = map[type] || ['var(--bg3)', 'var(--text3)'];
+    return { fontSize: 10, padding: '2px 8px', borderRadius: 99, fontWeight: 600, background: bg, color: col, whiteSpace: 'nowrap' };
+  },
+  // Buttons
+  btnPrimary: { padding: '8px 18px', fontSize: 13, fontWeight: 600, background: 'var(--purple)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer' },
+  btnSecondary: { padding: '7px 14px', fontSize: 13, fontWeight: 500, background: 'transparent', color: 'var(--text2)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius)', cursor: 'pointer' },
+  btnDanger: { padding: '6px 12px', fontSize: 12, background: 'transparent', color: 'var(--red)', border: '0.5px solid transparent', borderRadius: 'var(--radius)', cursor: 'pointer' },
+  iconBtn: (variant) => {
+    if (variant === 'copy') return { padding: '4px 10px', fontSize: 11, background: 'transparent', color: 'var(--text2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer' };
+    if (variant === 'copied') return { padding: '4px 10px', fontSize: 11, background: 'var(--green-light)', color: 'var(--green)', border: '0.5px solid var(--green)', borderRadius: 'var(--radius)', cursor: 'pointer' };
+    return { padding: '4px 10px', fontSize: 11, background: 'transparent', color: 'var(--text2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer' };
+  },
+  // Form
+  input: { width: '100%', fontSize: 13, background: 'var(--bg2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 11px', color: 'var(--text)', outline: 'none' },
+  textarea: { width: '100%', fontSize: 13, background: 'var(--bg2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 11px', color: 'var(--text)', outline: 'none', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' },
+  label: { display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 },
+};
+
+// ─── Utility components ─────────────────────────────────────────────────────
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button style={S.iconBtn(copied ? 'copied' : 'copy')} onClick={() => {
+      navigator.clipboard.writeText(text).catch(() => {});
+      setCopied(true); setTimeout(() => setCopied(false), 1500);
+    }}>{copied ? '✓ Copied' : 'Copy'}</button>
+  );
+}
+
+function Spinner({ size = 14 }) {
+  return (
+    <span style={{ display: 'inline-block', width: size, height: size, border: `2px solid var(--border2)`, borderTopColor: 'var(--purple)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+  );
+}
+
+function Modal({ title, onClose, children, footer }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }} onClick={onClose}>
+      <div style={{ background: 'var(--bg)', borderRadius: 'var(--radius-xl)', border: '0.5px solid var(--border2)', padding: '24px 26px', width: 460, maxWidth: '92vw', boxShadow: 'var(--shadow-lg)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 18 }}>{title}</div>
+        {children}
+        {footer && <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+function FormRow({ label, children }) {
+  return <div style={{ marginBottom: 14 }}><label style={S.label}>{label}</label>{children}</div>;
+}
+
+function CategoryLabel({ name }) {
+  return <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '20px 0 8px' }}>{name}</div>;
+}
+
+// ─── Field Library Panel ─────────────────────────────────────────────────────
+function FieldLibrary({ fields, onUpdate }) {
+  const [modal, setModal] = useState(null);
+  const [hovered, setHovered] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const categories = [...new Set(fields.map(f => f.category))];
+
+  async function saveField(data) {
+    setSaving(true);
+    try {
+      if (data.id) {
+        const updated = await apiFetch(`/api/fields/${data.id}`, { method: 'PUT', body: data });
+        onUpdate(fields.map(f => f.id === data.id ? updated : f));
+      } else {
+        const created = await apiFetch('/api/fields', { method: 'POST', body: data });
+        onUpdate([...fields, created]);
+      }
+      setModal(null);
+    } catch(e) { alert('Save failed: ' + e.message); }
+    setSaving(false);
+  }
+
+  async function deleteField(id) {
+    if (!confirm('Delete this field? It will also be removed from all grant workspaces.')) return;
+    await apiFetch(`/api/fields/${id}`, { method: 'DELETE' });
+    onUpdate(fields.filter(f => f.id !== id));
+  }
+
+  return (
+    <div style={S.panel}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } .nav-hover:hover { background: var(--bg3) !important; } .add-btn-hover:hover { background: var(--bg3) !important; color: var(--text) !important; border-style: solid !important; } .ibtn-hover:hover { background: var(--bg2) !important; color: var(--text) !important; } .danger-hover:hover { background: var(--red-light) !important; color: var(--red) !important; border-color: var(--red) !important; } .gen-btn:hover:not(:disabled) { opacity: 0.85; } .tab-hover:hover { color: var(--text) !important; } .copy-hover:hover { background: var(--bg2) !important; }`}</style>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div>
+          <div style={S.panelTitle}>Field library</div>
+          <div style={S.panelSub}>Your standard answers. Fixed fields stay unchanged; adaptive fields get AI-rewritten per grant.</div>
+        </div>
+        <button style={{ ...S.btnSecondary, marginTop: 4 }} onClick={() => setModal({ type: 'field' })}>+ Add field</button>
+      </div>
+
+      {categories.map(cat => (
+        <div key={cat}>
+          <CategoryLabel name={cat} />
+          {fields.filter(f => f.category === cat).map(field => (
+            <div key={field.id} style={S.card(hovered === field.id)} onMouseEnter={() => setHovered(field.id)} onMouseLeave={() => setHovered(null)}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{field.name}</span>
+                  <span style={S.badge(field.type)}>{field.type}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                  <CopyButton text={field.content} />
+                  <button className="ibtn-hover" style={S.iconBtn()} onClick={() => setModal({ type: 'field', field })}>Edit</button>
+                  <button className="danger-hover" style={{ ...S.iconBtn(), color: 'var(--red)' }} onClick={() => deleteField(field.id)}>Delete</button>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.65 }}>{field.content}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {modal?.type === 'field' && (
+        <FieldModal
+          initial={modal.field}
+          onSave={saveField}
+          onClose={() => setModal(null)}
+          saving={saving}
+        />
+      )}
+    </div>
+  );
+}
+
+function FieldModal({ initial, onSave, onClose, saving }) {
+  const [name, setName] = useState(initial?.name || '');
+  const [type, setType] = useState(initial?.type || 'fixed');
+  const [category, setCategory] = useState(initial?.category || '');
+  const [content, setContent] = useState(initial?.content || '');
+
+  return (
+    <Modal title={initial ? 'Edit field' : 'Add field'} onClose={onClose}
+      footer={[
+        <button key="c" style={S.btnSecondary} onClick={onClose}>Cancel</button>,
+        <button key="s" style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving} onClick={() => onSave({ id: initial?.id, name, type, category, content })}>
+          {saving ? 'Saving…' : (initial ? 'Save changes' : 'Add field')}
+        </button>
+      ]}>
+      <FormRow label="Field name"><input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Problem statement" /></FormRow>
+      <FormRow label="Type">
+        <select style={S.input} value={type} onChange={e => setType(e.target.value)}>
+          <option value="fixed">Fixed — same across all grants</option>
+          <option value="adaptive">Adaptive — AI rewrites per grant</option>
+        </select>
+      </FormRow>
+      <FormRow label="Category"><input style={S.input} value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Technology, Narrative, Financials…" /></FormRow>
+      <FormRow label="Base answer"><textarea style={{ ...S.textarea, minHeight: 110 }} value={content} onChange={e => setContent(e.target.value)} /></FormRow>
+    </Modal>
+  );
+}
+
+// ─── Grant Workspace ─────────────────────────────────────────────────────────
+const STATUS_LABELS = { draft: 'Draft', in_progress: 'In progress', submitted: 'Submitted', awarded: 'Awarded', rejected: 'Rejected' };
+
+function GrantWorkspace({ grant, fields, onGrantUpdate }) {
+  const [tab, setTab] = useState('setup');
+  const [localGrant, setLocalGrant] = useState(grant);
+  const [overrides, setOverrides] = useState(grant.fieldOverrides || {});
+  const [generating, setGenerating] = useState({});
+  const [savingDesc, setSavingDesc] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const descTimer = useRef(null);
+  const notesTimer = useRef(null);
+
+  useEffect(() => { setLocalGrant(grant); setOverrides(grant.fieldOverrides || {}); }, [grant.id]);
+
+  const adaptiveFields = fields.filter(f => f.type === 'adaptive');
+  const fixedFields = fields.filter(f => f.type === 'fixed');
+
+  async function patchGrant(data) {
+    const updated = await apiFetch(`/api/grants/${grant.id}`, { method: 'PUT', body: { ...localGrant, ...data } });
+    setLocalGrant(updated);
+    onGrantUpdate(updated);
+  }
+
+  function onDescChange(val) {
+    setLocalGrant(g => ({ ...g, description: val }));
+    clearTimeout(descTimer.current);
+    descTimer.current = setTimeout(() => patchGrant({ description: val }), 800);
+  }
+
+  function onNotesChange(val) {
+    setLocalGrant(g => ({ ...g, notes: val }));
+    clearTimeout(notesTimer.current);
+    notesTimer.current = setTimeout(() => patchGrant({ notes: val }), 800);
+  }
+
+  async function saveOverride(fieldId, content) {
+    setOverrides(o => ({ ...o, [fieldId]: content }));
+    await apiFetch(`/api/grants/${grant.id}/overrides/${fieldId}`, { method: 'PUT', body: { content } });
+  }
+
+  async function generateField(fieldId) {
+    setGenerating(g => ({ ...g, [fieldId]: '' }));
+    if (tab !== 'adaptive') setTab('adaptive');
+    try {
+      const res = await fetch(`/api/grants/${grant.id}/generate/${fieldId}`, { method: 'POST' });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.slice(6));
+          if (data.delta) setGenerating(g => ({ ...g, [fieldId]: (g[fieldId] || '') + data.delta }));
+          if (data.done) { setOverrides(o => ({ ...o, [fieldId]: data.content })); setGenerating(g => { const n = { ...g }; delete n[fieldId]; return n; }); }
+          if (data.error) { setGenerating(g => { const n = { ...g }; delete n[fieldId]; return n; }); }
+        }
+      }
+    } catch(e) { setGenerating(g => { const n = { ...g }; delete n[fieldId]; return n; }); }
+  }
+
+  async function generateAll() {
+    if (!localGrant.description) return;
+    setTab('adaptive');
+    setGenerating(Object.fromEntries(adaptiveFields.map(f => [f.id, ''])));
+    try {
+      const res = await fetch(`/api/grants/${grant.id}/generate-all`, { method: 'POST' });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.slice(6));
+          if (data.fieldId && data.delta) setGenerating(g => ({ ...g, [data.fieldId]: (g[data.fieldId] || '') + data.delta }));
+          if (data.fieldId && data.status === 'done') {
+            setOverrides(o => ({ ...o, [data.fieldId]: data.content }));
+            setGenerating(g => { const n = { ...g }; delete n[data.fieldId]; return n; });
+          }
+          if (data.allDone) setGenerating({});
+        }
+      }
+    } catch(e) { setGenerating({}); }
+  }
+
+  const isGeneratingAny = Object.keys(generating).length > 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
+      <div style={{ padding: '18px 30px 0', borderBottom: '0.5px solid var(--border)', background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          {editingTitle
+            ? <input autoFocus style={{ ...S.input, fontSize: 18, fontWeight: 700, padding: '4px 8px', maxWidth: 360 }}
+                value={localGrant.name}
+                onChange={e => setLocalGrant(g => ({ ...g, name: e.target.value }))}
+                onBlur={() => { setEditingTitle(false); patchGrant({ name: localGrant.name }); }}
+                onKeyDown={e => e.key === 'Enter' && e.target.blur()} />
+            : <h2 style={{ fontSize: 18, fontWeight: 700, cursor: 'text' }} onClick={() => setEditingTitle(true)}>{localGrant.name}</h2>
+          }
+          <select style={{ ...S.input, width: 'auto', fontSize: 12, padding: '4px 8px' }}
+            value={localGrant.status}
+            onChange={e => { const s = e.target.value; setLocalGrant(g => ({ ...g, status: s })); patchGrant({ status: s }); }}>
+            {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <div style={{ flex: 1 }} />
+          {localGrant.dueDate && (
+            <span style={{ fontSize: 12, color: 'var(--text3)' }}>Due: {localGrant.dueDate}</span>
+          )}
+        </div>
+        {/* Tabs */}
+        <div style={{ display: 'flex' }}>
+          {[['setup', 'Setup'], ['adaptive', `Adaptive (${adaptiveFields.length})`], ['fixed', `Fixed (${fixedFields.length})`], ['notes', 'Notes']].map(([key, label]) => (
+            <div key={key} className="tab-hover" onClick={() => setTab(key)}
+              style={{ padding: '9px 16px', fontSize: 13, cursor: 'pointer', color: tab === key ? 'var(--text)' : 'var(--text2)', borderBottom: `2px solid ${tab === key ? 'var(--purple)' : 'transparent'}`, fontWeight: tab === key ? 600 : 400, marginBottom: -0.5 }}>
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      {tab === 'setup' && (
+        <div style={S.panel}>
+          <div style={S.panelTitle}>Grant setup</div>
+          <div style={S.panelSub}>Add the grant context so the AI knows how to position you.</div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+            <FormRow label="Grant / funder name">
+              <input style={S.input} value={localGrant.name}
+                onChange={e => setLocalGrant(g => ({ ...g, name: e.target.value }))}
+                onBlur={() => patchGrant({ name: localGrant.name })} />
+            </FormRow>
+            <FormRow label="Due date">
+              <input type="date" style={S.input} value={localGrant.dueDate || ''}
+                onChange={e => { setLocalGrant(g => ({ ...g, dueDate: e.target.value })); patchGrant({ dueDate: e.target.value }); }} />
+            </FormRow>
+          </div>
+
+          <FormRow label="Grant description / RFP context">
+            <textarea style={{ ...S.textarea, minHeight: 130 }}
+              placeholder="Paste the RFP, grant brief, or key focus areas. The more context you provide, the better the AI can tailor your adaptive fields…"
+              value={localGrant.description || ''}
+              onChange={e => onDescChange(e.target.value)} />
+          </FormRow>
+
+          <button className="gen-btn" disabled={!localGrant.description || isGeneratingAny}
+            onClick={generateAll}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 20px', fontSize: 13, fontWeight: 600, background: 'var(--purple)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer', opacity: (!localGrant.description || isGeneratingAny) ? 0.5 : 1, marginBottom: 20 }}>
+            {isGeneratingAny && <Spinner size={13} />}
+            Generate all adaptive fields →
+          </button>
+
+          <div style={{ background: 'var(--bg2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, fontSize: 13, color: 'var(--text2)', lineHeight: 1.75 }}>
+            <strong style={{ color: 'var(--text)', fontWeight: 600 }}>Workflow</strong><br />
+            1. Fill in the description / RFP above and set a due date.<br />
+            2. Click "Generate all adaptive fields" — each adaptive field gets rewritten by Claude to match this grant's priorities.<br />
+            3. Review and edit in the <strong style={{ color: 'var(--text)' }}>Adaptive</strong> tab.<br />
+            4. Fixed fields are pre-populated in the <strong style={{ color: 'var(--text)' }}>Fixed</strong> tab.<br />
+            5. Hit <strong style={{ color: 'var(--text)' }}>Copy</strong> on any field to grab it for pasting.
+          </div>
+        </div>
+      )}
+
+      {tab === 'adaptive' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 30px' }}>
+          {adaptiveFields.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13, padding: '40px 0', textAlign: 'center' }}>No adaptive fields in library yet.</div>}
+          {adaptiveFields.map(field => {
+            const isGen = field.id in generating;
+            const streamText = generating[field.id];
+            const content = isGen ? streamText : (overrides[field.id] !== undefined ? overrides[field.id] : field.content);
+            return (
+              <div key={field.id} style={{ ...S.card(false), marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{field.name}</span>
+                    <span style={S.badge('adaptive')}>adaptive</span>
+                    {isGen && <Spinner size={12} />}
+                  </div>
+                  {!isGen && (
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <button className="ibtn-hover" style={S.iconBtn()} onClick={() => generateField(field.id)}>Regenerate</button>
+                      <CopyButton text={content} />
+                    </div>
+                  )}
+                </div>
+                {isGen
+                  ? <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.65, minHeight: 60, opacity: 0.7 }}>{streamText || 'Drafting…'}<span style={{ animation: 'blink 1s step-end infinite', display: 'inline-block', width: 2, height: 14, background: 'var(--purple)', marginLeft: 2, verticalAlign: 'middle' }} /></div>
+                  : <textarea style={{ ...S.textarea, minHeight: 90, background: 'var(--bg2)' }}
+                      value={content}
+                      onChange={e => saveOverride(field.id, e.target.value)} />
+                }
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === 'fixed' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 30px' }}>
+          <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16, lineHeight: 1.65 }}>
+            These fields come directly from your library unchanged. Copy them into the application form as needed.
+          </div>
+          {fixedFields.map(field => (
+            <div key={field.id} style={{ ...S.card(false), marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{field.name}</span>
+                  <span style={S.badge('fixed')}>fixed</span>
+                </div>
+                <CopyButton text={field.content} />
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.65 }}>{field.content}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'notes' && (
+        <div style={S.panel}>
+          <div style={S.panelTitle}>Notes</div>
+          <div style={S.panelSub}>Track reviewer contacts, strategy, checklist items, or anything else about this grant.</div>
+          <textarea style={{ ...S.textarea, minHeight: 320, background: 'var(--bg2)' }}
+            placeholder="Add notes, contacts, checklist, strategy…"
+            value={localGrant.notes || ''}
+            onChange={e => onNotesChange(e.target.value)} />
+        </div>
+      )}
+
+      <style>{`
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+        .gen-btn:hover:not(:disabled) { opacity: 0.85 !important; }
+      `}</style>
+    </div>
+  );
+}
+
+// ─── Grant Modal ──────────────────────────────────────────────────────────────
+function GrantModal({ onSave, onClose }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  return (
+    <Modal title="New grant workspace" onClose={onClose}
+      footer={[
+        <button key="c" style={S.btnSecondary} onClick={onClose}>Cancel</button>,
+        <button key="s" style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving || !name.trim()} onClick={async () => { setSaving(true); await onSave(name); setSaving(false); }}>
+          {saving ? 'Creating…' : 'Create workspace'}
+        </button>
+      ]}>
+      <FormRow label="Grant / funder name">
+        <input style={S.input} autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. NIH R01, DOE SBIR Phase II…" onKeyDown={e => e.key === 'Enter' && name.trim() && onSave(name)} />
+      </FormRow>
+    </Modal>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+function App() {
+  const [fields, setFields] = useState([]);
+  const [grants, setGrants] = useState([]);
+  const [view, setView] = useState('library');
+  const [activeGrantId, setActiveGrantId] = useState(null);
+  const [showGrantModal, setShowGrantModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([apiFetch('/api/fields'), apiFetch('/api/grants')])
+      .then(([f, g]) => { setFields(f); setGrants(g); if (g.length) { setActiveGrantId(g[0].id); setView('grant'); } })
+      .catch(e => alert('Could not connect to server: ' + e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function createGrant(name) {
+    const g = await apiFetch('/api/grants', { method: 'POST', body: { name } });
+    setGrants(prev => [...prev, g]);
+    setActiveGrantId(g.id);
+    setView('grant');
+    setShowGrantModal(false);
+  }
+
+  async function deleteGrant(id) {
+    if (!confirm('Delete this grant workspace?')) return;
+    await apiFetch(`/api/grants/${id}`, { method: 'DELETE' });
+    const remaining = grants.filter(g => g.id !== id);
+    setGrants(remaining);
+    if (activeGrantId === id) {
+      if (remaining.length) { setActiveGrantId(remaining[0].id); setView('grant'); }
+      else { setActiveGrantId(null); setView('library'); }
+    }
+  }
+
+  function onGrantUpdate(updated) {
+    setGrants(prev => prev.map(g => g.id === updated.id ? updated : g));
+  }
+
+  const activeGrant = grants.find(g => g.id === activeGrantId);
+
+  if (loading) return (
+    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
+      <Spinner size={24} />
+      <span style={{ fontSize: 13, color: 'var(--text3)' }}>Loading…</span>
+    </div>
+  );
+
+  return (
+    <div style={S.app}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .nav-hover:hover { background: var(--bg3) !important; }
+        .add-btn-hover:hover { background: var(--bg3) !important; color: var(--text) !important; border-style: solid !important; }
+        .ibtn-hover:hover { background: var(--bg3) !important; color: var(--text) !important; }
+        .danger-hover:hover { background: var(--red-light) !important; color: var(--red) !important; border-color: var(--red) !important; }
+        .tab-hover:hover { color: var(--text) !important; }
+      `}</style>
+
+      {/* Sidebar */}
+      <div style={S.sidebar}>
+        <div style={S.sidebarHeader}>
+          <div style={S.sidebarCo}>BioStore Technologies</div>
+          <div style={S.sidebarTitle}>Grant Assistant</div>
+        </div>
+        <div style={S.sidebarScroll}>
+          <div style={S.sectionLabel}>Library</div>
+          <div className="nav-hover" style={S.navItem(view === 'library')} onClick={() => setView('library')}>
+            <span style={S.dot('var(--purple)')} />
+            Field library
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text3)' }}>{fields.length}</span>
+          </div>
+
+          <div style={S.sectionLabel}>Grant workspaces</div>
+          {grants.map(g => (
+            <div key={g.id} className="nav-hover" style={{ ...S.navItem(view === 'grant' && activeGrantId === g.id), justifyContent: 'space-between' }}
+              onClick={() => { setActiveGrantId(g.id); setView('grant'); }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden', flex: 1 }}>
+                <span style={S.dot('var(--amber)')} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{g.name}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <span style={S.badge(g.status)}>{STATUS_LABELS[g.status]}</span>
+                <button style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 14, lineHeight: 1, padding: '0 2px', cursor: 'pointer' }}
+                  onClick={e => { e.stopPropagation(); deleteGrant(g.id); }} title="Delete">×</button>
+              </div>
+            </div>
+          ))}
+          <button className="add-btn-hover" style={S.addBtn} onClick={() => setShowGrantModal(true)}>+ New grant workspace</button>
+        </div>
+
+        {/* Sidebar footer */}
+        <div style={{ padding: '12px 18px', borderTop: '0.5px solid var(--border)', fontSize: 11, color: 'var(--text3)' }}>
+          {grants.length} grant{grants.length !== 1 ? 's' : ''} · {fields.length} fields
+        </div>
+      </div>
+
+      {/* Main */}
+      <div style={S.main}>
+        {view === 'library' && (
+          <FieldLibrary fields={fields} onUpdate={setFields} />
+        )}
+        {view === 'grant' && activeGrant && (
+          <GrantWorkspace
+            key={activeGrant.id}
+            grant={activeGrant}
+            fields={fields}
+            onGrantUpdate={onGrantUpdate}
+          />
+        )}
+        {view === 'grant' && !activeGrant && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)', fontSize: 14 }}>
+            Select or create a grant workspace
+          </div>
+        )}
+      </div>
+
+      {showGrantModal && <GrantModal onSave={createGrant} onClose={() => setShowGrantModal(false)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
