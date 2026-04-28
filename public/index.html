@@ -245,13 +245,14 @@ function GrantWorkspace({ grant, fields, onGrantUpdate }) {
   const [tab, setTab] = useState('setup');
   const [localGrant, setLocalGrant] = useState(grant);
   const [overrides, setOverrides] = useState(grant.fieldOverrides || {});
+  const [wordLimits, setWordLimits] = useState(grant.wordLimits || {});
   const [generating, setGenerating] = useState({});
   const [savingDesc, setSavingDesc] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const descTimer = useRef(null);
   const notesTimer = useRef(null);
 
-  useEffect(() => { setLocalGrant(grant); setOverrides(grant.fieldOverrides || {}); }, [grant.id]);
+useEffect(() => { setLocalGrant(grant); setOverrides(grant.fieldOverrides || {}); setWordLimits(grant.wordLimits || {}); }, [grant.id]);
 
   const adaptiveFields = fields.filter(f => f.type === 'adaptive');
   const fixedFields = fields.filter(f => f.type === 'fixed');
@@ -278,6 +279,17 @@ function GrantWorkspace({ grant, fields, onGrantUpdate }) {
     setOverrides(o => ({ ...o, [fieldId]: content }));
     await apiFetch(`/api/grants/${grant.id}/overrides/${fieldId}`, { method: 'PUT', body: { content } });
   }
+
+  async function saveWordLimit(fieldId, limit) {
+  const val = parseInt(limit);
+  setWordLimits(w => {
+    const next = { ...w };
+    if (val > 0) next[fieldId] = val;
+    else delete next[fieldId];
+    return next;
+  });
+  await apiFetch(`/api/grants/${grant.id}/wordlimits/${fieldId}`, { method: 'PUT', body: { limit: val || 0 } });
+}
 
   async function generateField(fieldId) {
     setGenerating(g => ({ ...g, [fieldId]: '' }));
@@ -416,36 +428,56 @@ function GrantWorkspace({ grant, fields, onGrantUpdate }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 30px' }}>
           {adaptiveFields.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13, padding: '40px 0', textAlign: 'center' }}>No adaptive fields in library yet.</div>}
           {adaptiveFields.map(field => {
-            const isGen = field.id in generating;
-            const streamText = generating[field.id];
-            const content = isGen ? streamText : (overrides[field.id] !== undefined ? overrides[field.id] : field.content);
-            return (
-              <div key={field.id} style={{ ...S.card(false), marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{field.name}</span>
-                    <span style={S.badge('adaptive')}>adaptive</span>
-                    {isGen && <Spinner size={12} />}
-                  </div>
-                  {!isGen && (
-                    <div style={{ display: 'flex', gap: 5 }}>
-                      <button className="ibtn-hover" style={S.iconBtn()} onClick={() => generateField(field.id)}>Regenerate</button>
-                      <CopyButton text={content} />
-                    </div>
-                  )}
-                </div>
-                {isGen
-                  ? <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.65, minHeight: 60, opacity: 0.7 }}>{streamText || 'Drafting…'}<span style={{ animation: 'blink 1s step-end infinite', display: 'inline-block', width: 2, height: 14, background: 'var(--purple)', marginLeft: 2, verticalAlign: 'middle' }} /></div>
-                  : <textarea style={{ ...S.textarea, minHeight: 90, background: 'var(--bg2)' }}
-                      value={content}
-                      onChange={e => saveOverride(field.id, e.target.value)} />
-                }
-              </div>
-            );
-          })}
+           const isGen = field.id in generating;
+const streamText = generating[field.id];
+const content = isGen ? streamText : (overrides[field.id] !== undefined ? overrides[field.id] : field.content);
+const wordCount = content ? content.trim().split(/\s+/).filter(Boolean).length : 0;
+const limit = wordLimits[field.id];
+const overLimit = limit && wordCount > limit;
+return (
+  <div key={field.id} style={{ ...S.card(false), marginBottom: 12 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{field.name}</span>
+        <span style={S.badge('adaptive')}>adaptive</span>
+        {isGen && <Spinner size={12} />}
+      </div>
+      {!isGen && (
+        <div style={{ display: 'flex', gap: 5 }}>
+          <button className="ibtn-hover" style={S.iconBtn()} onClick={() => generateField(field.id)}>Regenerate</button>
+          <CopyButton text={content} />
         </div>
       )}
+    </div>
 
+    {/* Word limit input */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Word limit</span>
+      <input
+        type="number" min="10" max="2000"
+        placeholder="optional"
+        value={wordLimits[field.id] || ''}
+        onChange={e => saveWordLimit(field.id, e.target.value)}
+        style={{ width: 90, fontSize: 12, padding: '3px 8px', background: 'var(--bg2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none' }}
+      />
+    </div>
+
+    {isGen
+      ? <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.65, minHeight: 60, opacity: 0.7 }}>{streamText || 'Drafting…'}<span style={{ animation: 'blink 1s step-end infinite', display: 'inline-block', width: 2, height: 14, background: 'var(--purple)', marginLeft: 2, verticalAlign: 'middle' }} /></div>
+      : <>
+          <textarea style={{ ...S.textarea, minHeight: 90, background: 'var(--bg2)' }}
+            value={content}
+            onChange={e => saveOverride(field.id, e.target.value)} />
+          <div style={{ fontSize: 11, color: overLimit ? 'var(--red)' : 'var(--text3)', marginTop: 4, textAlign: 'right' }}>
+            {wordCount} word{wordCount !== 1 ? 's' : ''}{limit ? ` / ${limit}` : ''}{overLimit ? ' — over limit' : ''}
+          </div>
+        </>
+    }
+  </div>
+);
+        })}
+        </div>
+      )}
       {tab === 'fixed' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 30px' }}>
           <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16, lineHeight: 1.65 }}>
