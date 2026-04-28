@@ -41,7 +41,7 @@ async function seedIfEmpty() {
 await seedIfEmpty();
 
 // ─── Anti-hallucination prompt builder ───────────────────────────────────────
-function buildPrompt(fieldName, fieldBaseContent, grantName, grantDescription, fixedFields) {
+function buildPrompt(fieldName, fieldBaseContent, grantName, grantDescription, fixedFields, wordLimit = null) {
   const fixedContext = fixedFields.map(f => `${f.name}:\n${f.content}`).join('\n\n');
   return `You are a professional grant writer helping a company tailor their grant application to a specific funder.
 
@@ -72,7 +72,7 @@ Rewrite the field content above so it speaks directly to this funder's prioritie
 - Highlight whichever aspects of the company are most relevant to this funder
 - Do NOT introduce any numbers, statistics, dates, or claims not present in the company context
 - Do NOT overstate the maturity, traction, or capabilities of the technology
-- Return ONLY the rewritten field text — no labels, no headings, no preamble, no quotation marks`;
+${wordLimit ? `- Write no more than ${wordLimit} words\n` : ''}- Return ONLY the rewritten field text — no labels, no headings, no preamble, no quotation marks`;
 }
 
 // ─── Fields API ──────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ app.get('/api/grants', async (req, res) => {
 app.post('/api/grants', async (req, res) => {
   const { name, description, status, dueDate, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
-  const grant = { id: randomUUID(), name, description: description || '', status: status || 'draft', dueDate: dueDate || '', notes: notes || '', fieldOverrides: {}, createdAt: Date.now() };
+  const grant = { id: randomUUID(), name, description: description || '', status: status || 'draft', dueDate: dueDate || '', notes: notes || '', fieldOverrides: {}, wordLimits: {}, createdAt: Date.now() };
   const grants = await db.getData('/grants');
   grants.push(grant);
   await db.push('/grants', grants);
@@ -156,6 +156,17 @@ app.put('/api/grants/:id/overrides/:fieldId', async (req, res) => {
   res.json({ ok: true });
 });
 
+app.put('/api/grants/:id/wordlimits/:fieldId', async (req, res) => {
+  const grants = await db.getData('/grants');
+  const grant = grants.find(g => g.id === req.params.id);
+  if (!grant) return res.status(404).json({ error: 'Not found' });
+  if (!grant.wordLimits) grant.wordLimits = {};
+  const limit = parseInt(req.body.limit);
+  if (limit > 0) grant.wordLimits[req.params.fieldId] = limit;
+  else delete grant.wordLimits[req.params.fieldId];
+  await db.push('/grants', grants);
+  res.json({ ok: true });
+});
 // ─── AI: generate one field (streaming) ──────────────────────────────────────
 app.post('/api/grants/:id/generate/:fieldId', async (req, res) => {
   const grants = await db.getData('/grants');
@@ -171,7 +182,8 @@ app.post('/api/grants/:id/generate/:fieldId', async (req, res) => {
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const prompt = buildPrompt(field.name, field.content, grant.name, grant.description, fields.filter(f => f.type === 'fixed'));
+    const wordLimit = grant.wordLimits?.[field.id] || null;
+    const prompt = buildPrompt(field.name, field.content, grant.name, grant.description, fields.filter(f => f.type === 'fixed'), wordLimit);
     let fullText = '';
 
     const stream = await client.chat.completions.create({
@@ -223,7 +235,8 @@ app.post('/api/grants/:id/generate-all', async (req, res) => {
         model: process.env.OPENAI_MODEL || 'gpt-4o',
         max_tokens: 1024,
         stream: true,
-        messages: [{ role: 'user', content: buildPrompt(field.name, field.content, grant.name, grant.description, fixedFields) }],
+        const wordLimit = grant.wordLimits?.[field.id] || null;
+        messages: [{ role: 'user', content: buildPrompt(field.name, field.content, grant.name, grant.description, fixedFields, wordLimit) }],
       });
       for await (const chunk of stream) {
         const text = chunk.choices[0]?.delta?.content || '';
