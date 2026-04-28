@@ -231,11 +231,11 @@ app.post('/api/grants/:id/generate-all', async (req, res) => {
     res.write(`data: ${JSON.stringify({ fieldId: field.id, status: 'start' })}\n\n`);
     try {
       let fullText = '';
+      const wordLimit = grant.wordLimits?.[field.id] || null;
       const stream = await client.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o',
         max_tokens: 1024,
         stream: true,
-        const wordLimit = grant.wordLimits?.[field.id] || null;
         messages: [{ role: 'user', content: buildPrompt(field.name, field.content, grant.name, grant.description, fixedFields, wordLimit) }],
       });
       for await (const chunk of stream) {
